@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "xbox-dns-toggler",
+  "productName": "X-Route",
   "version": "0.1.0",
-  "identifier": "com.arrboy.xbox-dns-toggler",
+  "identifier": "com.xroute.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "xbox-dns-toggler",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "X-Route",
+        "width": 360,
+        "height": 560,
+        "resizable": false,
+        "center": true,
+        "visible": false,
+        "skipTaskbar": false
       }
     ],
     "security": {
