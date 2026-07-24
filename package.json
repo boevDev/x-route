@@ -1,0 +1,33 @@
+{
+  "name": "xbox-dns-toggler",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "lint:ox": "oxlint --deny correctness"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-opener": "^2",
+    "lucide-react": "^1.26.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "oxlint": "^1.75.0",
+    "prettier": "^3.9.6",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}
