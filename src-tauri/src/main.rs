@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
+use tauri::Manager;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -190,7 +191,9 @@ fn set_dns(enable: bool, ipv4: Vec<String>, ipv6: Vec<String>) -> Result<DnsStat
             "Set-DnsClientServerAddress -InterfaceIndex {interface_index} -ServerAddresses @({joined})"
         )
     } else {
-        format!("Set-DnsClientServerAddress -InterfaceIndex {interface_index} -ResetServerAddresses")
+        format!(
+            "Set-DnsClientServerAddress -InterfaceIndex {interface_index} -ResetServerAddresses"
+        )
     };
 
     run_powershell(&script)?;
@@ -199,13 +202,24 @@ fn set_dns(enable: bool, ipv4: Vec<String>, ipv6: Vec<String>) -> Result<DnsStat
     get_dns_status()
 }
 
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 fn main() {
     use tauri::menu::{Menu, MenuItem};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-    use tauri::{Manager, WindowEvent};
+    use tauri::WindowEvent;
     use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -230,12 +244,7 @@ fn main() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
+                    "show" => show_main_window(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -247,10 +256,7 @@ fn main() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                        show_main_window(&app);
                     }
                 })
                 .build(app)?;
@@ -259,10 +265,7 @@ fn main() {
             // Иначе показываем окно сразу (в конфиге оно visible: false по умолчанию)
             let launched_minimized = std::env::args().any(|a| a == "--minimized");
             if !launched_minimized {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+                show_main_window(&app.app_handle());
             }
 
             Ok(())
