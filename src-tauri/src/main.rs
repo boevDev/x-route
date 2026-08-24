@@ -8,6 +8,26 @@ use tauri::Manager;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+const RESOLVE_ROUTE_HEAD: &str = r#"
+$route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
+    Sort-Object -Property RouteMetric |
+    Select-Object -First 1;
+if (-not $route) {
+    throw 'Не найден активный сетевой маршрут (нет подключения к сети)';
+}
+"#;
+
+const STATUS_TAIL: &str = r#"
+$adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex;
+$dns = @(Get-DnsClientServerAddress -InterfaceIndex $route.InterfaceIndex |
+    Select-Object AddressFamily, ServerAddresses);
+[PSCustomObject]@{
+    InterfaceIndex = $adapter.ifIndex
+    InterfaceName  = $adapter.Name
+    Dns            = $dns
+} | ConvertTo-Json -Compress -Depth 4
+"#;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct DnsStatus {
     #[serde(rename = "interfaceName")]
@@ -44,6 +64,16 @@ impl RawAddresses {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct StatusPayload {
+    #[serde(rename = "InterfaceIndex")]
+    interface_index: u32,
+    #[serde(rename = "InterfaceName")]
+    interface_name: String,
+    #[serde(rename = "Dns", default)]
+    dns: Vec<RawDnsEntry>,
+}
+
 fn run_powershell(script: &str) -> Result<String, String> {
     let wrapped = format!(
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $ErrorActionPreference = 'Stop'; {script}"
@@ -77,69 +107,13 @@ fn run_powershell(script: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn resolve_active_interface() -> Result<(u32, String), String> {
-    let script = r#"
-        $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
-            Sort-Object -Property RouteMetric |
-            Select-Object -First 1;
-        if (-not $route) {
-            throw 'Не найден активный сетевой маршрут (нет подключения к сети)';
-        }
-        $adapter = Get-NetAdapter -InterfaceIndex $route.InterfaceIndex;
-        [PSCustomObject]@{
-            InterfaceIndex = $adapter.ifIndex
-            InterfaceName  = $adapter.Name
-        } | ConvertTo-Json -Compress
-    "#;
-
-    let raw = run_powershell(script)?;
-
-    #[derive(Deserialize)]
-    struct AdapterInfo {
-        #[serde(rename = "InterfaceIndex")]
-        interface_index: u32,
-        #[serde(rename = "InterfaceName")]
-        interface_name: String,
-    }
-
-    let info: AdapterInfo =
-        serde_json::from_str(&raw).map_err(|e| format!("Не удалось разобрать ответ ОС: {e}"))?;
-
-    Ok((info.interface_index, info.interface_name))
-}
-
-fn read_dns_for_interface(interface_index: u32) -> Result<(Vec<String>, Vec<String>), String> {
-    let script = format!(
-        r#"
-        Get-DnsClientServerAddress -InterfaceIndex {} |
-            Select-Object AddressFamily, ServerAddresses |
-            ConvertTo-Json -Compress
-        "#,
-        interface_index
-    );
-
-    let raw = run_powershell(&script)?;
-    if raw.is_empty() {
-        return Ok((vec![], vec![]));
-    }
-
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum RawEntries {
-        Many(Vec<RawDnsEntry>),
-        One(RawDnsEntry),
-    }
-
-    let entries: RawEntries =
-        serde_json::from_str(&raw).map_err(|e| format!("Не удалось разобрать DNS-записи: {e}"))?;
-    let entries = match entries {
-        RawEntries::Many(v) => v,
-        RawEntries::One(e) => vec![e],
-    };
+fn parse_status(raw: &str) -> Result<DnsStatus, String> {
+    let payload: StatusPayload =
+        serde_json::from_str(raw).map_err(|e| format!("Не удалось разобрать ответ ОС: {e}"))?;
 
     let mut ipv4 = vec![];
     let mut ipv6 = vec![];
-    for entry in entries {
+    for entry in payload.dns {
         let addrs = entry.server_addresses.into_vec();
         match entry.address_family {
             2 => ipv4 = addrs,
@@ -148,31 +122,29 @@ fn read_dns_for_interface(interface_index: u32) -> Result<(Vec<String>, Vec<Stri
         }
     }
 
-    Ok((ipv4, ipv6))
-}
-
-#[tauri::command]
-fn get_dns_status() -> Result<DnsStatus, String> {
-    let (interface_index, interface_name) = resolve_active_interface()?;
-    let (ipv4, ipv6) = read_dns_for_interface(interface_index)?;
-
     Ok(DnsStatus {
-        interface_name,
-        interface_index,
+        interface_name: payload.interface_name,
+        interface_index: payload.interface_index,
         ipv4,
         ipv6,
     })
 }
 
-#[tauri::command]
-fn set_dns(enable: bool, ipv4: Vec<String>, ipv6: Vec<String>) -> Result<DnsStatus, String> {
-    let (interface_index, _) = resolve_active_interface()?;
+fn get_dns_status_sync() -> Result<DnsStatus, String> {
+    let script = format!("{RESOLVE_ROUTE_HEAD}{STATUS_TAIL}");
+    let raw = run_powershell(&script)?;
+    if raw.is_empty() {
+        return Err("PowerShell вернул пустой ответ".to_string());
+    }
+    parse_status(&raw)
+}
 
-    let script = if enable {
-        let mut validated: Vec<String> = vec![];
+fn set_dns_sync(enable: bool, ipv4: Vec<String>, ipv6: Vec<String>) -> Result<DnsStatus, String> {
+    let set_action = if enable {
+        let mut validated: Vec<String> = Vec::with_capacity(ipv4.len() + ipv6.len());
         for ip in ipv4.iter().chain(ipv6.iter()) {
             match ip.parse::<IpAddr>() {
-                Ok(parsed) => validated.push(parsed.to_string()),
+                Ok(parsed) => validated.push(format!("'{parsed}'")),
                 Err(_) => return Err(format!("Некорректный IP-адрес: {ip}")),
             }
         }
@@ -181,25 +153,45 @@ fn set_dns(enable: bool, ipv4: Vec<String>, ipv6: Vec<String>) -> Result<DnsStat
             return Err("Список целевых DNS-адресов пуст".to_string());
         }
 
-        let joined = validated
-            .iter()
-            .map(|ip| format!("'{ip}'"))
-            .collect::<Vec<_>>()
-            .join(",");
-
         format!(
-            "Set-DnsClientServerAddress -InterfaceIndex {interface_index} -ServerAddresses @({joined})"
+            "Set-DnsClientServerAddress -InterfaceIndex $route.InterfaceIndex -ServerAddresses @({})",
+            validated.join(",")
         )
     } else {
-        format!(
-            "Set-DnsClientServerAddress -InterfaceIndex {interface_index} -ResetServerAddresses"
-        )
+        "Set-DnsClientServerAddress -InterfaceIndex $route.InterfaceIndex -ResetServerAddresses"
+            .to_string()
     };
 
-    run_powershell(&script)?;
-    let _ = run_powershell("Clear-DnsClientCache");
+    let script = format!(
+        "{RESOLVE_ROUTE_HEAD}\n{set_action};\ntry {{ Clear-DnsClientCache }} catch {{}};\n{STATUS_TAIL}"
+    );
 
-    get_dns_status()
+    let raw = run_powershell(&script)?;
+    if raw.is_empty() {
+        return Err("PowerShell вернул пустой ответ".to_string());
+    }
+    parse_status(&raw)
+}
+
+async fn run_blocking<T, F>(task: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    match tauri::async_runtime::spawn_blocking(task).await {
+        Ok(inner) => inner,
+        Err(e) => Err(format!("Фоновая задача прервана: {e}")),
+    }
+}
+
+#[tauri::command]
+async fn get_dns_status() -> Result<DnsStatus, String> {
+    run_blocking(get_dns_status_sync).await
+}
+
+#[tauri::command]
+async fn set_dns(enable: bool, ipv4: Vec<String>, ipv6: Vec<String>) -> Result<DnsStatus, String> {
+    run_blocking(move || set_dns_sync(enable, ipv4, ipv6)).await
 }
 
 fn show_main_window(app: &tauri::AppHandle) {
@@ -227,11 +219,14 @@ fn main() {
         ))
         .invoke_handler(tauri::generate_handler![get_dns_status, set_dns])
         .setup(|app| {
-            // Включаем автозапуск при первом старте, если ещё не включён
-            let autostart = app.autolaunch();
-            if !autostart.is_enabled().unwrap_or(false) {
-                let _ = autostart.enable();
-            }
+            // Реестр (проверка/включение автозапуска) — вне критического пути старта
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let autostart = handle.autolaunch();
+                if !autostart.is_enabled().unwrap_or(false) {
+                    let _ = autostart.enable();
+                }
+            });
 
             // Трей-меню: показать окно / выйти полностью
             let show_item = MenuItem::with_id(app, "show", "Показать X-Route", true, None::<&str>)?;
