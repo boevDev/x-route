@@ -1,9 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AlertTriangle, Globe, Monitor, ShieldCheck, Router, Settings } from 'lucide-react';
 import { useDnsStatus, useSetDns } from './queries/dns';
 import { useDnsPreferences } from './store';
 import { isDnsTargetActive } from './lib/dns';
+import {
+  dnsToggleReducer,
+  initialDnsToggleState,
+  successLabel,
+  useDnsProgressEvents,
+  useDnsSuccessTimeout,
+  workingStageLabel,
+} from './lib/dnsProgress';
 import { DnsSettingsPanel } from './components/DnsSettingsPanel';
 import './App.css';
 
@@ -16,20 +24,56 @@ function DnsMainView({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { data: status, isLoading, error: statusError } = useDnsStatus();
   const setDnsMutation = useSetDns();
 
+  const [toggle, dispatch] = useReducer(dnsToggleReducer, initialDnsToggleState);
+  useDnsProgressEvents(dispatch);
+  useDnsSuccessTimeout(toggle, dispatch);
+
+  useEffect(() => {
+    if (setDnsMutation.isSuccess) dispatch({ type: 'finish' });
+  }, [setDnsMutation.isSuccess, dispatch]);
+
+  useEffect(() => {
+    if (!setDnsMutation.isError || !(setDnsMutation.error instanceof Error)) return;
+    dispatch({ type: 'fail', message: setDnsMutation.error.message });
+  }, [setDnsMutation.isError, setDnsMutation.error, dispatch]);
+
   const isActive = useMemo(() => isDnsTargetActive(status, target), [status, target]);
-  const isBusy = isLoading || setDnsMutation.isPending;
+  const isToggling = toggle.kind === 'working';
+  const isBusy = isLoading || isToggling || setDnsMutation.isPending;
 
   const handleToggle = () => {
     if (isBusy) return;
+    const operation = isActive ? 'disable' : 'enable';
+    dispatch({ type: 'start', operation });
     setDnsMutation.mutate({ enable: !isActive, target });
   };
 
   const errorMessage =
-    setDnsMutation.error instanceof Error
-      ? setDnsMutation.error.message
-      : statusError instanceof Error
-        ? statusError.message
-        : null;
+    toggle.kind === 'error'
+      ? toggle.message
+      : setDnsMutation.error instanceof Error
+        ? setDnsMutation.error.message
+        : statusError instanceof Error
+          ? statusError.message
+          : null;
+
+  const rowTitle =
+    toggle.kind === 'working'
+      ? workingStageLabel(toggle.operation, toggle.stage)
+      : toggle.kind === 'success'
+        ? successLabel(toggle.operation)
+        : isBusy
+          ? 'Применение…'
+          : isActive
+            ? 'DNS активирован'
+            : 'Автоматический DNS';
+
+  const rowSub =
+    toggle.kind === 'working'
+      ? 'Обычно это занимает несколько секунд'
+      : isActive
+        ? 'Трафик идёт через кастомный DNS'
+        : 'Нажмите, чтобы включить';
 
   const targetAddresses = [...target.ipv4, ...target.ipv6];
   const currentAddresses = status ? [...status.ipv4, ...status.ipv6] : [];
@@ -81,12 +125,8 @@ function DnsMainView({ onOpenSettings }: { onOpenSettings: () => void }) {
         disabled={isBusy}
       >
         <span className="switch-row-text">
-          <span className="switch-row-title">
-            {isBusy ? 'Применение…' : isActive ? 'DNS активирован' : 'Автоматический DNS'}
-          </span>
-          <span className="switch-row-sub">
-            {isActive ? 'Трафик идёт через кастомный DNS' : 'Нажмите, чтобы включить'}
-          </span>
+          <span className="switch-row-title">{rowTitle}</span>
+          <span className="switch-row-sub">{rowSub}</span>
         </span>
         <span className="switch" aria-hidden="true">
           <span className="switch-thumb" />
