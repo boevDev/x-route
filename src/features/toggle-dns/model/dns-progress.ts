@@ -4,7 +4,7 @@ import type {
   DnsProgressEvent,
   DnsProgressStage,
   DnsToggleOperation,
-} from '../types/dns';
+} from '../../../shared/api/dns/dns.types';
 
 export const DNS_PROGRESS_EVENT = 'dns-progress';
 

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { DnsStatus, DnsTarget } from '../types/dns';
+import type { DnsStatus, DnsTarget } from '../../../shared/api/dns/dns.types';
 
 export const dnsApi = {
   getStatus: () => invoke<DnsStatus>('get_dns_status'),

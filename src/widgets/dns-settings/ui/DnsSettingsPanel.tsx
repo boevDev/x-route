@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, RotateCcw } from 'lucide-react';
-import { useDnsPreferences } from '../store';
-import { isValidIPv4, isValidIPv6 } from '../lib/dns';
+import { DEFAULT_DNS, useDnsPreferences } from '../../../entities/dns/model/dns-preferences.store';
+import { isValidIPv4, isValidIPv6 } from '../../../shared/lib/dns/dns.util';
 
 interface FormState {
   ipv4Primary: string;
@@ -39,12 +39,7 @@ export function DnsSettingsPanel({ onClose }: { onClose: () => void }) {
   };
 
   const handleResetToDefaults = () => {
-    setForm(
-      buildFormState({
-        ipv4: ['111.88.96.50', '111.88.96.51'],
-        ipv6: ['2a00:ab00:1233:26::50', '2a00:ab00:1233:26::51'],
-      }),
-    );
+    setForm(buildFormState(DEFAULT_DNS));
     setErrors({});
   };
 

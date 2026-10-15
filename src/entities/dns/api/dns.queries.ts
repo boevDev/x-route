@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { dnsApi } from '../api/dns';
-import type { DnsTarget } from '../types/dns';
+import { dnsApi } from './dns.api';
+import type { DnsTarget } from '../../../shared/api/dns/dns.types';
 
 export const dnsStatusQueryKey = ['dns-status'] as const;
 

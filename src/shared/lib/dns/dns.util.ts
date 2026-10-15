@@ -1,4 +1,4 @@
-import type { DnsStatus, DnsTarget } from '../types/dns';
+import type { DnsStatus, DnsTarget } from '../../api/dns/dns.types';
 
 function isSameAddressSet(current: string[], target: string[]): boolean {
   if (target.length === 0) return true; // для этой семьи адресов ничего не требуем
