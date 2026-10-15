@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useReducer } from 'react';
-import { useDnsStatus, useSetDns } from '../../../entities/dns/api/dns.queries';
-import { useDnsPreferences } from '../../../entities/dns/model/dns-preferences.store';
-import { isDnsTargetActive } from '../../../shared/lib/dns/dns.util';
-import {
-  dnsToggleReducer,
-  initialDnsToggleState,
-  useDnsProgressEvents,
-  useDnsSuccessTimeout,
-} from './dns-progress';
+import { isDnsTargetActive, useDnsPreferences, useDnsStatus, useSetDns } from '@/entities/dns';
+import { getErrorMessage } from '@/shared/lib/error';
+import { dnsToggleReducer, initialDnsToggleState } from './dns-progress';
+import { useDnsProgressEvents, useDnsSuccessTimeout } from './use-dns-progress';
 
 export function useToggleDns() {
   const target = useDnsPreferences((state) => state.target);
@@ -20,12 +15,13 @@ export function useToggleDns() {
 
   useEffect(() => {
     if (setDnsMutation.isSuccess) dispatch({ type: 'finish' });
-  }, [setDnsMutation.isSuccess]);
+  }, [setDnsMutation.isSuccess, dispatch]);
 
   useEffect(() => {
-    if (!setDnsMutation.isError || !(setDnsMutation.error instanceof Error)) return;
-    dispatch({ type: 'fail', message: setDnsMutation.error.message });
-  }, [setDnsMutation.isError, setDnsMutation.error]);
+    if (!setDnsMutation.isError) return;
+    const message = getErrorMessage(setDnsMutation.error);
+    if (message !== null) dispatch({ type: 'fail', message });
+  }, [setDnsMutation.isError, setDnsMutation.error, dispatch]);
 
   const isActive = useMemo(() => isDnsTargetActive(status, target), [status, target]);
   const isToggling = toggle.kind === 'working';
@@ -41,11 +37,7 @@ export function useToggleDns() {
   const errorMessage =
     toggle.kind === 'error'
       ? toggle.message
-      : setDnsMutation.error instanceof Error
-        ? setDnsMutation.error.message
-        : statusError instanceof Error
-          ? statusError.message
-          : null;
+      : (getErrorMessage(setDnsMutation.error) ?? getErrorMessage(statusError));
 
   return {
     isActive,

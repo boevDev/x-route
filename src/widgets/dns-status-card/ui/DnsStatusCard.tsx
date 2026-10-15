@@ -1,17 +1,8 @@
 import { AlertTriangle, Globe, Monitor, ShieldCheck, Router, Settings } from 'lucide-react';
-import { useToggleDns } from '../../../features/toggle-dns/model/use-toggle-dns';
-import { workingStageLabel, successLabel } from '../../../features/toggle-dns/model/dns-progress';
+import { successLabel, useToggleDns, workingStageLabel } from '@/features/toggle-dns';
 
 export function DnsStatusCard({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const {
-    isActive,
-    isBusy,
-    toggle,
-    status,
-    target,
-    handleToggle,
-    errorMessage,
-  } = useToggleDns();
+  const { isActive, isBusy, toggle, status, target, handleToggle, errorMessage } = useToggleDns();
 
   const rowTitle =
     toggle.kind === 'working'

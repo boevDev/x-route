@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { DnsStatusCard } from '../../../widgets/dns-status-card/ui/DnsStatusCard';
-import { DnsSettingsPanel } from '../../../widgets/dns-settings/ui/DnsSettingsPanel';
+import { DnsStatusCard } from '@/widgets/dns-status-card';
+import { DnsSettingsPanel } from '@/widgets/dns-settings';
 
 export function MainPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);

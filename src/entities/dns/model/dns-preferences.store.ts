@@ -1,11 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { DnsTarget } from '../../../shared/api/dns/dns.types';
-
-export const DEFAULT_DNS: DnsTarget = {
-  ipv4: ['159.194.200.33', '193.233.112.67', '193.233.112.88', '37.230.192.51', '193.233.112.68'],
-  ipv6: ['2a00:ab00:1233:26::50', '2a00:ab00:1233:26::51'],
-};
+import { DEFAULT_DNS } from '../config/default-dns';
+import type { DnsTarget } from './dns.types';
 
 interface DnsPreferencesState {
   target: DnsTarget;

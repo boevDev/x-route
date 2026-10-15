@@ -13,13 +13,7 @@ export interface DnsTarget {
 export type DnsToggleOperation = 'enable' | 'disable';
 
 export type DnsProgressStage =
-  | 'resolving'
-  | 'applying'
-  | 'resetting'
-  | 'clearing'
-  | 'verifying'
-  | 'done'
-  | 'error';
+  'resolving' | 'applying' | 'resetting' | 'clearing' | 'verifying' | 'done' | 'error';
 
 export interface DnsProgressEvent {
   stage: DnsProgressStage;
